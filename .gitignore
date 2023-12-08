@@ -1,0 +1,7 @@
+.pdm-python
+.pdm-build
+.venv
+pdm.lock
+__pycache__
+.vscode
+.idea
