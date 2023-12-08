@@ -8,9 +8,15 @@ requires-python = ">=3.10"
 readme = "README.md"
 license = { text = "MIT" }
 
+[project.optional-dependencies]
+langsmith = ["langsmith>=0.0.69"]
+
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.pdm.dev-dependencies]
 dev = ["isort>=5.12.0", "black>=23.11.0"]
+
+[tool.black]
+line-length = 100
