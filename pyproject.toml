@@ -3,7 +3,7 @@ name = "promplate-trace"
 version = "0.0.1dev1"
 description = "Observability for Promplate"
 authors = [{ name = "Muspi Merol", email = "me@promplate.dev" }]
-dependencies = ["promplate==0.3.0a5", "pydantic-settings>=2"]
+dependencies = ["promplate==0.3.0a6", "pydantic-settings>=2"]
 requires-python = ">=3.10"
 readme = "README.md"
 license = { text = "MIT" }
@@ -19,4 +19,4 @@ build-backend = "pdm.backend"
 dev = ["isort>=5.12.0", "black>=23.11.0"]
 
 [tool.black]
-line-length = 100
+line-length = 140
