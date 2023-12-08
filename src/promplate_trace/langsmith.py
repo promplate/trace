@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import AsyncIterable, Callable, Iterable, Literal, Sequence
+from typing import AsyncIterable, Callable, Iterable, Literal, Sequence, cast
 
 from langsmith import Client, RunTree
-from promplate.chain.node import ChainContext, JumpTo, Node
+from promplate.chain.node import AbstractChain, Chain, ChainContext, JumpTo, Node
 from promplate.llm.base import AsyncComplete, AsyncGenerate, Complete, Generate
 from promplate.prompt.chat import Message, assistant, ensure
 from promplate.prompt.template import Context
@@ -219,46 +219,10 @@ class patch:
             return wrapper
 
     @staticmethod
-    def node(NodeClass: type[Node]):
-        class TraceableNode(NodeClass):
-            def render(self, context: Context | None = None):
-                context = ChainContext(context, self.context)
-                parent_run = context.pop("__parent__", None)
-                self._apply_pre_processes(context)
-                run = plant(
-                    "render",
-                    "prompt",
-                    {
-                        "template": self.template.text,
-                        "context": {} if context is None else {**context},
-                    },
-                    parent_run=parent_run,
-                )
-                prompt = self.template.render(context)
-                run.end(outputs={"output": prompt})
-                run.post()
-                return prompt
-
-            async def arender(self, context: Context | None = None):
-                context = ChainContext(context, self.context)
-                parent_run = context.pop("__parent__", None)
-                await self._apply_async_pre_processes(context)
-                run = plant(
-                    "arender",
-                    "prompt",
-                    {
-                        "template": self.template.text,
-                        "context": {} if context is None else {**context},
-                    },
-                    parent_run=parent_run,
-                )
-                prompt = await self.template.arender(context)
-                run.end(outputs={"output": prompt})
-                run.post()
-                return prompt
-
+    def chain(ChainClass: type[Chain]):
+        class TraceableNode(ChainClass):
             def on_chain_start(self, context: Context | None = None, **config):
-                context_in = {} if context is None else {**context}
+                context_in = {} if context is None else {k: v for k, v in context.items() if k != "__parent__"}
                 run = plant(str(self), "chain", context_in, parent_run=config.get("__parent__"))
                 context_out = ChainContext.ensure(context)
                 context_out["__parent__"] = config["__parent__"] = run
@@ -331,3 +295,52 @@ class patch:
                         raise jump from None
 
         return TraceableNode
+
+    @staticmethod
+    def node(NodeClass: type[Node]):
+        class TraceableChain(cast(type[Node], patch.chain(NodeClass))):  # type: ignore
+            Chain = patch.chain(Chain)
+
+            def next(self, chain: AbstractChain):
+                if isinstance(chain, Chain):
+                    return self.Chain(self, *chain)
+                else:
+                    return self.Chain(self, chain)
+
+            def render(self, context: Context | None = None):
+                context = ChainContext(context, self.context)
+                parent_run = context.pop("__parent__", None)
+                self._apply_pre_processes(context)
+                run = plant(
+                    "render",
+                    "prompt",
+                    {
+                        "template": self.template.text,
+                        "context": {} if context is None else {**context},
+                    },
+                    parent_run=parent_run,
+                )
+                prompt = self.template.render(context)
+                run.end(outputs={"output": prompt})
+                run.post()
+                return prompt
+
+            async def arender(self, context: Context | None = None):
+                context = ChainContext(context, self.context)
+                parent_run = context.pop("__parent__", None)
+                await self._apply_async_pre_processes(context)
+                run = plant(
+                    "arender",
+                    "prompt",
+                    {
+                        "template": self.template.text,
+                        "context": {} if context is None else {**context},
+                    },
+                    parent_run=parent_run,
+                )
+                prompt = await self.template.arender(context)
+                run.end(outputs={"output": prompt})
+                run.post()
+                return prompt
+
+        return TraceableChain
