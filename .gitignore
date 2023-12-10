@@ -5,3 +5,4 @@ pdm.lock
 __pycache__
 .vscode
 .idea
+.env

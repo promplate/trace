@@ -9,5 +9,5 @@ pip install promplate-trace
 ## Roadmap
 
 - [x] langsmith
-- [ ] langfuse
+- [x] langfuse
 - [ ] llmonitor
