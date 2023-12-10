@@ -32,7 +32,7 @@ def diff_context(context_in: Context, context_out: Context) -> Context:
     return {k: v for k, v in context_out.items() if k not in context_in or context_in[k] != v}
 
 
-def get_versions(*packages):
+def get_versions(*packages: str):
     return {package: version(package) for package in packages} | {"python": python_version}
 
 

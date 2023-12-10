@@ -1,7 +1,8 @@
 from typing import AsyncIterable, Callable, Iterable, cast
 
 from langfuse import Langfuse
-from langfuse.client import CreateEvent, CreateGeneration, CreateSpan, CreateTrace, StatefulClient, StatefulSpanClient, UpdateGeneration, UpdateSpan
+from langfuse.client import StatefulClient, StatefulSpanClient, StatefulTraceClient, StateType
+from langfuse.model import CreateEvent, CreateGeneration, CreateSpan, CreateTrace, UpdateGeneration, UpdateSpan
 from promplate.chain.node import AbstractChain, Chain, ChainContext, JumpTo, Node
 from promplate.llm.base import AsyncComplete, AsyncGenerate, Complete, Generate
 from promplate.prompt.chat import Message, assistant, ensure
@@ -21,7 +22,10 @@ def get_version_info():
     return " ".join(f"{k}/{v}" for k, v in get_versions("promplate", "promplate-trace").items())
 
 
-def ensure_parent_run(parent: StatefulClient | None):
+def ensure_parent_run(parent: StatefulClient | str | None):
+    if isinstance(parent, str):
+        return StatefulTraceClient(get_client().client, parent, StateType.TRACE, parent, get_client().task_manager)
+
     metadata = get_versions("promplate", "promplate-trace", "langfuse")
     parent = parent or get_client().trace(CreateTrace(metadata=metadata))
     assert parent is not None

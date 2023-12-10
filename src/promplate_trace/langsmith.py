@@ -8,7 +8,7 @@ from promplate.prompt.chat import Message, assistant, ensure
 from promplate.prompt.template import Context
 
 from .env import env
-from .utils import cache, diff_context, wraps
+from .utils import cache, diff_context, get_versions, wraps
 
 RunType = Literal["tool", "chain", "llm", "retriever", "embedding", "prompt", "parser"]
 
@@ -42,7 +42,7 @@ def plant(
         name=name,
         run_type=run_type,
         inputs=inputs,
-        extra=extra or {},
+        extra=(extra or {}) | {"runtime": get_versions("promplate", "promplate-trace", "langsmith")},
         tags=tags,
         error=error,
         outputs=outputs,
