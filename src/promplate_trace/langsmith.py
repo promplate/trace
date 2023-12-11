@@ -8,7 +8,7 @@ from promplate.prompt.chat import Message, assistant, ensure
 from promplate.prompt.template import Context
 
 from .env import env
-from .utils import cache, diff_context, get_versions, wraps
+from .utils import cache, diff_context, get_versions, only_once, wraps
 
 RunType = Literal["tool", "chain", "llm", "retriever", "embedding", "prompt", "parser"]
 
@@ -94,10 +94,11 @@ def chat_output(text=""):
 class patch:
     class text:
         @staticmethod
+        @only_once
         def complete(f: Complete):
             @wraps(f)
             def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop("__parent__", None))
+                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop("__lc_parent__", None))
                 run.post()
                 out = f(text, **config)
                 run.end(outputs=text_output(out))
@@ -107,10 +108,11 @@ class patch:
             return wrapper
 
         @staticmethod
+        @only_once
         def acomplete(f: AsyncComplete):
             @wraps(f)
             async def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop("__parent__", None))
+                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop("__lc_parent__", None))
                 run.post()
                 out = await f(text, **config)
                 run.end(outputs=text_output(out))
@@ -120,10 +122,11 @@ class patch:
             return wrapper
 
         @staticmethod
+        @only_once
         def generate(f: Generate):
             @wraps(f)
             def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop("__parent__", None))
+                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop("__lc_parent__", None))
                 run.post()
                 out = ""
                 for delta in f(text, **config):
@@ -138,10 +141,11 @@ class patch:
             return wrapper
 
         @staticmethod
+        @only_once
         def agenerate(f: AsyncGenerate):
             @wraps(f)
             async def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop("__parent__", None))
+                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop("__lc_parent__", None))
                 run.post()
                 out = ""
                 async for delta in f(text, **config):
@@ -157,10 +161,11 @@ class patch:
 
     class chat:
         @staticmethod
+        @only_once
         def complete(f: Complete):
             @wraps(f)
             def wrapper(messages: list[Message] | str, /, **config):
-                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop("__parent__", None))
+                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop("__lc_parent__", None))
                 run.post()
                 out = f(messages, **config)
                 run.end(outputs=chat_output(out))
@@ -170,10 +175,11 @@ class patch:
             return wrapper
 
         @staticmethod
+        @only_once
         def acomplete(f: AsyncComplete):
             @wraps(f)
             async def wrapper(messages: list[Message] | str, /, **config):
-                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop("__parent__", None))
+                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop("__lc_parent__", None))
                 run.post()
                 out = await f(messages, **config)
                 run.end(outputs=chat_output(out))
@@ -183,10 +189,11 @@ class patch:
             return wrapper
 
         @staticmethod
+        @only_once
         def generate(f: Generate):
             @wraps(f)
             def wrapper(messages: str, /, **config):
-                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop("__parent__", None))
+                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop("__lc_parent__", None))
                 run.post()
                 out = ""
                 for delta in f(messages, **config):
@@ -201,10 +208,11 @@ class patch:
             return wrapper
 
         @staticmethod
+        @only_once
         def agenerate(f: AsyncGenerate):
             @wraps(f)
             async def wrapper(messages: str, /, **config):
-                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop("__parent__", None))
+                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop("__lc_parent__", None))
                 run.post()
                 out = ""
                 async for delta in f(messages, **config):
@@ -219,20 +227,21 @@ class patch:
             return wrapper
 
     @staticmethod
+    @only_once
     def chain(ChainClass: type[Chain]):
-        class TraceableNode(ChainClass):
+        class TraceableChain(ChainClass):
             def on_chain_start(self, context: Context | None = None, **config):
-                context_in = {} if context is None else {k: v for k, v in context.items() if k != "__parent__"}
-                run = plant(str(self), "chain", context_in, parent_run=config.get("__parent__"))
+                context_in = {} if context is None else {k: v for k, v in context.items() if not k.endswith("parent__")}
+                run = plant(str(self), "chain", context_in, parent_run=config.get("__lc_parent__"))
                 context_out = ChainContext.ensure(context)
-                context_out["__parent__"] = config["__parent__"] = run
+                context_out["__lc_parent__"] = config["__lc_parent__"] = run
                 run.post()
                 return run, context_in, context_out, config
 
             def on_chain_end(self, run: RunTree, config, context_in, context_out):
                 run.end(outputs=diff_context(context_in, context_out))
                 run.patch()
-                config["__parent__"] = run.parent_run
+                config["__lc_parent__"] = run.parent_run
                 return config
 
             def invoke(self, context=None, /, complete=None, **config) -> ChainContext:
@@ -294,22 +303,29 @@ class patch:
                     else:
                         raise jump from None
 
-        return TraceableNode
+            def next(self, chain: AbstractChain):
+                if isinstance(chain, Node):
+                    return patch.chain(Chain)(*self, chain)
+                elif isinstance(chain, Chain):
+                    return patch.chain(Chain)(*self, *chain)
+                else:
+                    raise NotImplementedError
+
+        return TraceableChain
 
     @staticmethod
+    @only_once
     def node(NodeClass: type[Node]):
-        class TraceableChain(cast(type[Node], patch.chain(NodeClass))):  # type: ignore
-            Chain = patch.chain(Chain)
-
+        class TraceableNode(cast(type[Node], patch.chain(NodeClass))):  # type: ignore
             def next(self, chain: AbstractChain):
                 if isinstance(chain, Chain):
-                    return self.Chain(self, *chain)
+                    return patch.chain(Chain)(self, *chain)
                 else:
-                    return self.Chain(self, chain)
+                    return patch.chain(Chain)(self, chain)
 
             def render(self, context: Context | None = None):
                 context = ChainContext(context, self.context)
-                parent_run = context.pop("__parent__", None)
+                parent_run = context.pop("__lc_parent__", None)
                 self._apply_pre_processes(context)
                 run = plant(
                     "render",
@@ -327,7 +343,7 @@ class patch:
 
             async def arender(self, context: Context | None = None):
                 context = ChainContext(context, self.context)
-                parent_run = context.pop("__parent__", None)
+                parent_run = context.pop("__lc_parent__", None)
                 await self._apply_async_pre_processes(context)
                 run = plant(
                     "arender",
@@ -343,4 +359,4 @@ class patch:
                 run.post()
                 return prompt
 
-        return TraceableChain
+        return TraceableNode

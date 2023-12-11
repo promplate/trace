@@ -3,7 +3,7 @@ from functools import wraps as _wraps
 from importlib.metadata import version
 from json import JSONEncoder, dumps, loads
 from sys import version as python_version
-from typing import Callable, ParamSpec, TypeVar
+from typing import Callable, Hashable, ParamSpec, TypeVar, cast
 
 from promplate import Context
 
@@ -15,17 +15,30 @@ def wraps(target: Callable[P, T]) -> Callable[..., Callable[P, T]]:
     return _wraps(target)  # type: ignore
 
 
-def cache(function: Callable[[], T]) -> Callable[[], T]:
-    result = None
+def cache(function: Callable[P, T]) -> Callable[P, T]:
+    results: dict[Hashable, T] = {}
 
     @wraps(function)
-    def wrapper():
-        nonlocal result
-        if result is None:
-            result = function()
+    def wrapper(*args: Hashable):
+        if args in results:
+            return results[args]
+        result = results[args] = function(*args)  # type: ignore
         return result
 
     return wrapper
+
+
+def only_once(decorator: Callable[P, T]) -> Callable[P, T]:
+    @wraps(decorator)
+    def wrapper(function):
+        decorators = getattr(function, "__decorators__", [])
+        if decorator not in decorators:
+            function = decorator(function)  # type: ignore
+            function.__decorators__ = decorators + [decorator]
+
+        return function
+
+    return cast(T, wrapper)  # type: ignore
 
 
 def diff_context(context_in: Context, context_out: Context) -> Context:
