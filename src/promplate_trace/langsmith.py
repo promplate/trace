@@ -8,7 +8,7 @@ from promplate.prompt.chat import Message, assistant, ensure
 from promplate.prompt.template import Context
 
 from .env import env
-from .utils import cache, diff_context, get_versions, only_once, wraps
+from .utils import cache, diff_context, get_versions, name, only_once, wraps
 
 RunType = Literal["tool", "chain", "llm", "retriever", "embedding", "prompt", "parser"]
 
@@ -61,10 +61,8 @@ def plant_text_completions(
     outputs: dict | None = None,
     parent_run: RunTree | None = None,
 ):
-    cls = function.__class__
-    name = f"{cls.__module__}.{cls.__name__}"
     extra = extra or {} | {"invocation_params": config}
-    return plant(name, "llm", {"prompt": text, **config}, extra, tags, error, outputs, parent_run)
+    return plant(name(function), "llm", {"prompt": text, **config}, extra, tags, error, outputs, parent_run)
 
 
 def plant_chat_completions(
@@ -77,10 +75,8 @@ def plant_chat_completions(
     outputs: dict | None = None,
     parent_run: RunTree | None = None,
 ):
-    cls = function.__class__
-    name = f"{cls.__module__}.{cls.__name__}"
     extra = extra or {} | {"invocation_params": config}
-    return plant(name, "llm", {"messages": messages, **config}, extra, tags, error, outputs, parent_run)
+    return plant(name(function), "llm", {"messages": messages, **config}, extra, tags, error, outputs, parent_run)
 
 
 def text_output(text=""):

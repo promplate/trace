@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from functools import wraps as _wraps
 from importlib.metadata import version
+from inspect import isfunction, ismethod
 from json import JSONEncoder, dumps, loads
 from sys import version as python_version
 from typing import Callable, Hashable, ParamSpec, TypeVar, cast
@@ -67,3 +68,10 @@ class CustomJSONEncoder(JSONEncoder):
 
 def ensure_serializable(context: Context):
     return loads(dumps(context, ensure_ascii=False, cls=CustomJSONEncoder))
+
+
+def name(function: Callable):
+    if isfunction(function):
+        return f"{function.__module__}.{function.__name__}"
+    cls = (function.__self__ if ismethod(function) else function).__class__
+    return f"{cls.__module__}.{cls.__name__}"

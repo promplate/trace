@@ -9,7 +9,7 @@ from promplate.prompt.chat import Message, assistant, ensure
 from promplate.prompt.template import Context
 
 from .env import env
-from .utils import cache, diff_context, ensure_serializable, get_versions, only_once, utcnow, wraps
+from .utils import cache, diff_context, ensure_serializable, get_versions, name, only_once, utcnow, wraps
 
 
 @cache
@@ -33,12 +33,10 @@ def ensure_parent_run(parent: StatefulClient | str | None):
 
 
 def plant_text_completions(function: Callable, text: str, config: dict, parent_run: StatefulClient | None = None):
-    cls = function.__class__
-    name = f"{cls.__module__}.{cls.__name__}"
     parent = ensure_parent_run(parent_run)
     run = parent.generation(
         CreateGeneration(
-            name=name,
+            name=name(function),
             prompt=text,
             model=config.get("model", None),
             startTime=utcnow(),
@@ -50,12 +48,10 @@ def plant_text_completions(function: Callable, text: str, config: dict, parent_r
 
 
 def plant_chat_completions(function: Callable, messages: list[Message], config: dict, parent_run: StatefulClient | None = None):
-    cls = function.__class__
-    name = f"{cls.__module__}.{cls.__name__}"
     parent = ensure_parent_run(parent_run)
     run = parent.generation(
         CreateGeneration(
-            name=name,
+            name=name(function),
             prompt=messages,
             model=config.get("model", None),
             startTime=utcnow(),
