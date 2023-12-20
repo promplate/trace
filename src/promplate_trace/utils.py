@@ -75,3 +75,13 @@ def name(function: Callable):
         return f"{function.__module__}.{function.__name__}"
     cls = (function.__self__ if ismethod(function) else function).__class__
     return f"{cls.__module__}.{cls.__name__}"
+
+
+def clean(context: Context):
+    return {k: v for k, v in context.items() if not k.endswith("parent__")}
+
+
+def clean_inplace(context: Context):
+    for k in list(context.keys()):
+        if k.endswith("parent__"):
+            del context[k]

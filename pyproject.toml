@@ -1,16 +1,16 @@
 [project]
 name = "promplate-trace"
-version = "0.0.1dev2"
+version = "0.0.1dev3"
 description = "Observability for Promplate"
 authors = [{ name = "Muspi Merol", email = "me@promplate.dev" }]
-dependencies = ["promplate==0.3.0b1", "pydantic-settings>=2"]
+dependencies = ["promplate>=0.3.0rc3", "pydantic-settings>=2"]
 requires-python = ">=3.10"
 readme = "README.md"
 license = { text = "MIT" }
 
 [project.optional-dependencies]
 langsmith = ["langsmith>=0.0.69"]
-langfuse = ["langfuse>=1.13.0"]
+langfuse = ["langfuse>=2.0"]
 
 [project.urls]
 homepage = "https://promplate.dev/py"
