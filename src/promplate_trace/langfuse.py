@@ -87,7 +87,7 @@ class TraceCallback(BaseCallback):
 
         return context, config
 
-    def on_leave(self, _, context: Context, config: Context):
+    def on_leave(self, _, context: Context, config: Context):  # type: ignore
         context_out = clean(context)
 
         runs = find_runs(config, context)
@@ -232,7 +232,7 @@ class patch:
     @only_once
     def node(NodeClass: type[Node]):
         class TraceableNode(patch.chain(NodeClass)):
-            def _get_chain_type(self):
+            def _get_chain_type(self):  # type: ignore
                 return patch.chain(super()._get_chain_type())
 
             def render(self, context: Context | None = None, callbacks=None):

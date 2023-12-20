@@ -1,6 +1,6 @@
 [project]
 name = "promplate-trace"
-version = "0.0.1dev3"
+version = "0.1.0"
 description = "Observability for Promplate"
 authors = [{ name = "Muspi Merol", email = "me@promplate.dev" }]
 dependencies = ["promplate>=0.3.0rc3", "pydantic-settings>=2"]
