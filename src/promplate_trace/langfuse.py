@@ -8,7 +8,7 @@ from promplate.prompt.chat import Message, assistant, ensure
 from promplate.prompt.template import Context
 
 from .env import env
-from .utils import cache, clean, diff_context, ensure_serializable, get_versions, name, only_once, utcnow, wraps
+from .utils import cache, clean, diff_context, ensure_flatten, ensure_serializable, get_versions, name, only_once, utcnow, wraps
 
 MaybeRun = StatefulClient | str | None
 
@@ -51,7 +51,7 @@ def plant_text_completions(function: Callable, text: str, config: Context, paren
         input=text,
         model=config.get("model"),
         start_time=utcnow(),
-        model_parameters={k: v for k, v in config.items() if k != "model"},
+        model_parameters={k: ensure_flatten(v) for k, v in config.items() if k != "model"},
     )
     assert run is not None
     return run
@@ -65,7 +65,7 @@ def plant_chat_completions(function: Callable, messages: list[Message], config: 
         input=messages,
         model=config.get("model"),
         start_time=utcnow(),
-        model_parameters={k: v for k, v in config.items() if k != "model"},
+        model_parameters={k: ensure_flatten(v) for k, v in config.items() if k != "model"},
     )
     assert run is not None
     return run

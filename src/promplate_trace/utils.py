@@ -85,3 +85,7 @@ def clean_inplace(context: Context):
     for k in list(context.keys()):
         if k.endswith("parent__"):
             del context[k]
+
+
+def ensure_flatten(value):
+    return value if isinstance(value, str) else dumps(value)
