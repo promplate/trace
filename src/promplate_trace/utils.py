@@ -70,7 +70,9 @@ def ensure_serializable(context: Context):
     return loads(dumps(context, ensure_ascii=False, cls=CustomJSONEncoder))
 
 
-def name(function: Callable):
+def name(function: Callable) -> str:
+    if hasattr(function, "__wrapped__"):
+        return name(getattr(function, "__wrapped__"))
     if isfunction(function):
         return f"{function.__module__}.{function.__name__}"
     cls = (function.__self__ if ismethod(function) else function).__class__
