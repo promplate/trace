@@ -28,11 +28,6 @@ def get_client():
     return Langfuse(env.langfuse_public_key, env.langfuse_secret_key, env.langfuse_host)
 
 
-@cache
-def get_version_info():
-    return " ".join(f"{k}/{v}" for k, v in get_versions("promplate", "promplate-trace").items())
-
-
 def ensure_parent_run(parent: MaybeRun):
     if isinstance(parent, str):
         return StatefulTraceClient(get_client().client, parent, StateType.TRACE, parent, get_client().task_manager)
