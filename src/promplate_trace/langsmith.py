@@ -99,7 +99,7 @@ def chat_output(text=""):
 
 class TraceCallback(BaseCallback):
     def on_enter(self, node, context: Context | None, config: Context):
-        context_in = self.context_in = {} if context is None else {k: v for k, v in context.items() if not k.endswith("parent__")}
+        context_in = self.context_in = {} if context is None else clean(context)
 
         parent_run = find_run(config, context_in)
 
@@ -114,7 +114,7 @@ class TraceCallback(BaseCallback):
         return context, config
 
     def on_leave(self, _, context: Context, config: Context):  # type: ignore
-        context_out = {k: v for k, v in context.items() if not k.endswith("parent__")}
+        context_out = clean(context)
 
         self.run.end(outputs=diff_context(self.context_in, context_out))
         self.run.patch()
@@ -289,7 +289,7 @@ class patch:
                     "prompt",
                     {
                         "template": self.template.text,
-                        "context": {} if context is None else {k: v for k, v in context.items() if not k.endswith("parent__")},
+                        "context": {} if context is None else clean(context),
                     },
                     parent_run=parent_run,
                 )
@@ -308,7 +308,7 @@ class patch:
                     "prompt",
                     {
                         "template": self.template.text,
-                        "context": {} if context is None else {k: v for k, v in context.items() if not k.endswith("parent__")},
+                        "context": {} if context is None else clean(context),
                     },
                     parent_run=parent_run,
                 )

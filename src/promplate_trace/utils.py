@@ -91,3 +91,9 @@ def clean_inplace(context: Context):
 
 def ensure_flatten(value):
     return value if isinstance(value, str) else dumps(value)
+
+
+def split_model_parameters(config: Context) -> tuple[dict[str, str | int | None], Context | None]:
+    model_parameters = clean(config)
+    extras = {i: model_parameters.pop(i) for i in tuple(model_parameters) if i.startswith("extra_")}
+    return {k: ensure_flatten(v) for k, v in model_parameters.items()}, (extras or None)

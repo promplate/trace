@@ -8,7 +8,7 @@ from promplate.prompt.chat import Message, assistant, ensure
 from promplate.prompt.template import Context
 
 from .env import env
-from .utils import cache, clean, diff_context, ensure_flatten, ensure_serializable, get_versions, name, only_once, utcnow, wraps
+from .utils import cache, clean, diff_context, ensure_serializable, get_versions, name, only_once, split_model_parameters, utcnow, wraps
 
 MaybeRun = StatefulClient | str | None
 
@@ -44,28 +44,30 @@ def ensure_parent_run(parent: MaybeRun):
 
 
 def plant_text_completions(function: Callable, text: str, config: Context, parent_run: MaybeRun = None):
-    config = clean(config)
     parent = ensure_parent_run(parent_run)
+    config, extras = split_model_parameters(config)
     run = parent.generation(
         name=name(function),
         input=text,
-        model=config.get("model"),
+        model=str(config.pop("model", None)),
         start_time=utcnow(),
-        model_parameters={k: ensure_flatten(v) for k, v in config.items() if k != "model"},
+        model_parameters=config,
+        metadata=extras,
     )
     assert run is not None
     return run
 
 
 def plant_chat_completions(function: Callable, messages: list[Message], config: Context, parent_run: MaybeRun = None):
-    config = clean(config)
     parent = ensure_parent_run(parent_run)
+    config, extras = split_model_parameters(config)
     run = parent.generation(
         name=name(function),
         input=messages,
-        model=config.get("model"),
+        model=str(config.pop("model", None)),
         start_time=utcnow(),
-        model_parameters={k: ensure_flatten(v) for k, v in config.items() if k != "model"},
+        model_parameters=config,
+        metadata=extras,
     )
     assert run is not None
     return run
