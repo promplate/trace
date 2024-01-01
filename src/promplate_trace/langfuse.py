@@ -154,7 +154,7 @@ class patch:
                         run.update(completion_start_time=utcnow())
                     out += delta
                     yield delta
-                run.end(completion=out, end_time=utcnow())
+                run.end(output=out, end_time=utcnow())
 
             return wrapper
 
