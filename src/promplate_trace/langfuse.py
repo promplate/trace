@@ -1,14 +1,15 @@
+from inspect import isasyncgen, isawaitable, isgenerator
 from typing import Callable, TypeVar, cast
 
 from langfuse import Langfuse
-from langfuse.client import StatefulClient, StatefulSpanClient, StatefulTraceClient, StateType
+from langfuse.client import StatefulClient, StatefulGenerationClient, StatefulSpanClient, StatefulTraceClient, StateType
 from promplate.chain.node import BaseCallback, Chain, Interruptable, Node
-from promplate.llm.base import AsyncComplete, AsyncGenerate, Complete, Generate
-from promplate.prompt.chat import Message, assistant, ensure
+from promplate.llm.base import LLM, AsyncComplete, AsyncGenerate, Complete, Generate
+from promplate.prompt.chat import Message, ensure
 from promplate.prompt.template import Context
 
 from .env import env
-from .utils import cache, clean, diff_context, ensure_serializable, get_versions, name, only_once, split_model_parameters, utcnow, wraps
+from .utils import as_is_decorator, cache, clean, diff_context, ensure_serializable, get_versions, name, only_once, split_model_parameters, utcnow, wraps
 
 MaybeRun = StatefulClient | str | None
 
@@ -53,12 +54,12 @@ def plant_text_completions(function: Callable, text: str, config: Context, paren
     return run
 
 
-def plant_chat_completions(function: Callable, messages: list[Message], config: Context, parent_run: MaybeRun = None):
+def plant_chat_completions(function: Callable, messages: str | list[Message], config: Context, parent_run: MaybeRun = None):
     parent = ensure_parent_run(parent_run)
     config, extras = split_model_parameters(config)
     run = parent.generation(
         name=name(function),
-        input=messages,
+        input=ensure(messages),
         model=str(config.pop("model", None)),
         start_time=utcnow(),
         model_parameters=config,
@@ -101,119 +102,190 @@ T = TypeVar("T", bound=Interruptable)
 
 
 class patch:
+    @staticmethod
+    def _make_complete_wrapper(plant: Callable[..., StatefulGenerationClient], original):
+        @wraps(original)
+        def wrapper(prompt, /, **config):
+            run = plant(original, prompt, config, parent_run=config.pop(LF_PARENT, [None])[-1])
+            out = original(prompt, **config)
+
+            if isawaitable(out):
+
+                async def _():
+                    result = await out
+                    run.end(output=result)
+                    return result
+
+                return _()
+
+            run.end(output=out)
+            return out
+
+        return wrapper
+
+    @staticmethod
+    def _make_generate_wrapper(plant: Callable[..., StatefulGenerationClient], original):
+        @wraps(original)
+        def wrapper(prompt, /, **config):
+            run = plant(original, prompt, config, parent_run=config.pop(LF_PARENT, [None])[-1])
+            gen = original(prompt, **config)
+
+            if isasyncgen(gen):
+
+                async def _():
+                    out = ""
+                    async for delta in gen:
+                        if not out:
+                            run.update(completion_start_time=utcnow())
+                        out += delta
+                        yield delta
+                    run.end(output=out, end_time=utcnow())
+
+                return _()
+
+            assert isgenerator(gen)
+
+            def _():
+                out = ""
+                for delta in gen:
+                    if not out:
+                        run.update(completion_start_time=utcnow())
+                    out += delta
+                    yield delta
+                run.end(output=out, end_time=utcnow())
+
+            return _()
+
+        return wrapper
+
+    @staticmethod
+    def _make_dispatch_wrapper(plant: Callable[..., StatefulGenerationClient], original):
+        @wraps(original)
+        def wrapper(prompt, /, **config):
+            run = plant(original, prompt, config, config.pop(LF_PARENT, [None])[-1])
+            res = original(prompt, **config)
+
+            if isasyncgen(res):
+
+                async def _():
+                    out = ""
+                    async for delta in res:
+                        if not out:
+                            run.update(completion_start_time=utcnow())
+                        out += delta
+                        yield delta
+                    run.end(output=out, end_time=utcnow())
+
+                return _()
+
+            if isawaitable(res):
+
+                async def _():
+                    result = await res
+                    run.end(output=result)
+                    return result
+
+                return _()
+
+            if isinstance(res, str):
+                run.end(output=res, end_time=utcnow())
+                return res
+
+            assert isgenerator(res)
+
+            def _():
+                out = ""
+                for delta in res:
+                    if not out:
+                        run.update(completion_start_time=utcnow())
+                    out += delta
+                    yield delta
+                run.end(output=out, end_time=utcnow())
+
+            return _()
+
+        return wrapper
+
     class text:
         @staticmethod
         @only_once
-        def complete(f: Complete):
-            @wraps(f)
-            def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, parent_run=config.pop(LF_PARENT, [None])[-1])
-                out = f(text, **config)
-                run.end(output=out)
-                return out
-
-            return wrapper
+        @as_is_decorator
+        def complete(f: Complete | AsyncComplete):
+            return patch._make_complete_wrapper(plant_text_completions, f)
 
         @staticmethod
         @only_once
-        def acomplete(f: AsyncComplete):
-            @wraps(f)
-            async def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, parent_run=config.pop(LF_PARENT, [None])[-1])
-                out = await f(text, **config)
-                run.end(output=out)
-                return out
-
-            return wrapper
+        @as_is_decorator
+        def generate(f: Generate | AsyncGenerate):
+            return patch._make_generate_wrapper(plant_text_completions, f)
 
         @staticmethod
         @only_once
-        def generate(f: Generate):
-            @wraps(f)
-            def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, parent_run=config.pop(LF_PARENT, [None])[-1])
-                out = ""
-                for delta in f(text, **config):
-                    if not out:
-                        run.update(completion_start_time=utcnow())
-                    out += delta
-                    yield delta
-                run.end(output=out, end_time=utcnow())
+        @as_is_decorator
+        def auto(f: Complete | AsyncComplete | Generate | AsyncGenerate):
+            return patch._make_dispatch_wrapper(plant_text_completions, f)
 
-            return wrapper
+        def __new__(cls, f: Complete | AsyncComplete | Generate | AsyncGenerate):
+            return cls.auto(f)
 
         @staticmethod
         @only_once
-        def agenerate(f: AsyncGenerate):
-            @wraps(f)
-            async def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, parent_run=config.pop(LF_PARENT, [None])[-1])
-                out = ""
-                async for delta in f(text, **config):
-                    if not out:
-                        run.update(completion_start_time=utcnow())
-                    out += delta
-                    yield delta
-                run.end(output=out, end_time=utcnow())
+        def llm(LLMClass: type[LLM]):
+            class TraceableLLM(LLMClass):
+                @property
+                def complete(self):
+                    return patch.text.complete(super().complete)
 
-            return wrapper
+                @property
+                def generate(self):
+                    return patch.text.generate(super().generate)
+
+            return TraceableLLM
+
+        # for backward compatibility
+        acomplete = complete
+        agenerate = generate
 
     class chat:
         @staticmethod
         @only_once
-        def complete(f: Complete):
-            @wraps(f)
-            def wrapper(messages: list[Message] | str, /, **config):
-                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop(LF_PARENT, [None])[-1])
-                out = f(messages, **config)
-                run.end(output={"choices": [{"message": assistant > out}]})
-                return out
-
-            return wrapper
+        @as_is_decorator
+        def complete(f: Complete | AsyncComplete):
+            return patch._make_complete_wrapper(plant_chat_completions, f)
 
         @staticmethod
         @only_once
-        def acomplete(f: AsyncComplete):
-            @wraps(f)
-            async def wrapper(messages: list[Message] | str, /, **config):
-                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop(LF_PARENT, [None])[-1])
-                out = await f(messages, **config)
-                run.end(output={"choices": [{"message": assistant > out}]})
-                return out
-
-            return wrapper
+        def generate(f: Generate | AsyncGenerate):
+            return patch._make_generate_wrapper(plant_chat_completions, f)
 
         @staticmethod
         @only_once
-        def generate(f: Generate):
-            @wraps(f)
-            def wrapper(messages: str, /, **config):
-                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop(LF_PARENT, [None])[-1])
-                out = ""
-                for delta in f(messages, **config):
-                    if not out:
-                        run.update(completion_start_time=utcnow())
-                    out += delta
-                    yield delta
-                run.end(output=out, end_time=utcnow())
+        def llm(LLMClass: type[LLM]):
+            class TraceableLLM(LLMClass):
+                @property
+                def complete(self):
+                    return patch.chat.complete(super().complete)
 
-            return wrapper
+                @property
+                def generate(self):
+                    return patch.chat.generate(super().generate)
+
+            return TraceableLLM
 
         @staticmethod
         @only_once
-        def agenerate(f: AsyncGenerate):
-            @wraps(f)
-            async def wrapper(messages: str, /, **config):
-                run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop(LF_PARENT, [None])[-1])
-                out = ""
-                async for delta in f(messages, **config):
-                    if not out:
-                        run.update(completion_start_time=utcnow())
-                    out += delta
-                    yield delta
-                run.end(output=out, end_time=utcnow())
+        @as_is_decorator
+        def auto(f: Complete | AsyncComplete | Generate | AsyncGenerate):
+            return patch._make_dispatch_wrapper(plant_chat_completions, f)
 
-            return wrapper
+        T = TypeVar("T", bound=Complete | AsyncComplete | Generate | AsyncGenerate)
+
+        def __new__(cls, f: T) -> T:
+            return patch._make_dispatch_wrapper(plant_chat_completions, f)  # type: ignore
+
+        # for backward compatibility
+        acomplete = complete
+        agenerate = generate
 
     @staticmethod
     @only_once
