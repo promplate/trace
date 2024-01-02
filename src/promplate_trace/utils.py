@@ -29,6 +29,10 @@ def cache(function: Callable[P, T]) -> Callable[P, T]:
     return wrapper
 
 
+def as_is_decorator(_) -> Callable[[T], T]:
+    return _
+
+
 def only_once(decorator: Callable[P, T]) -> Callable[P, T]:
     @wraps(decorator)
     def wrapper(function):
