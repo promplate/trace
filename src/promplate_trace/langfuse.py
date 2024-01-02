@@ -232,10 +232,10 @@ class patch:
         @only_once
         def llm(LLMClass: type[LLM]):
             class TraceableLLM(LLMClass):
-                def complete(self) -> 'Union[Complete, AsyncComplete]':
+                def complete(self) -> "Union[Complete, AsyncComplete]":
                     return patch.text.complete(super().complete)
 
-                def generate(self) -> 'Union[Generate, AsyncGenerate]':
+                def generate(self) -> "Union[Generate, AsyncGenerate]":
                     return patch.text.generate(super().generate)
 
             return TraceableLLM
@@ -260,10 +260,10 @@ class patch:
         @only_once
         def llm(LLMClass: type[LLM]):
             class TraceableLLM(LLMClass):
-                def complete(self) -> 'Union[Complete, AsyncComplete]':
+                def complete(self) -> "Union[Complete, AsyncComplete]":
                     return patch.chat.complete(super().complete)
 
-                def generate(self) -> 'Union[Generate, AsyncGenerate]':
+                def generate(self) -> "Union[Generate, AsyncGenerate]":
                     return patch.chat.generate(super().generate)
 
             return TraceableLLM
