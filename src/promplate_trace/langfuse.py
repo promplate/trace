@@ -232,9 +232,8 @@ class patch:
         @only_once
         def llm(LLMClass: type[LLM]):
             class TraceableLLM(LLMClass):
-                @property
-                def complete(self):
-                    return patch.text.complete(super().complete)
+                def complete(self, *args, **kwargs):
+                    return super().complete(*args, **kwargs)
 
                 @property
                 def generate(self):
@@ -262,9 +261,8 @@ class patch:
         @only_once
         def llm(LLMClass: type[LLM]):
             class TraceableLLM(LLMClass):
-                @property
-                def complete(self):
-                    return patch.chat.complete(super().complete)
+                def complete(self, *args, **kwargs):
+                    return super().complete(*args, **kwargs)
 
                 @property
                 def generate(self):
