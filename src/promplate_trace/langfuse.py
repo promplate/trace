@@ -248,13 +248,13 @@ class patch:
         @staticmethod
         @only_once
         @as_is_decorator
-        def complete(f: Complete | AsyncComplete):
-            return patch._make_complete_wrapper(plant_chat_completions, f)
+        def complete(self, *args, **kwargs):
+            return super().complete(*args, **kwargs)
 
         @staticmethod
         @only_once
-        def generate(f: Generate | AsyncGenerate):
-            return patch._make_generate_wrapper(plant_chat_completions, f)
+        def generate(self, *args, **kwargs):
+            return super().generate(*args, **kwargs)
 
         @staticmethod
         @only_once
