@@ -235,9 +235,8 @@ class patch:
                 def complete(self, *args, **kwargs):
                     return super().complete(*args, **kwargs)
 
-                @property
-                def generate(self):
-                    return patch.text.generate(super().generate)
+                def generate(self, *args, **kwargs):
+                    return super().generate(*args, **kwargs)
 
             return TraceableLLM
 
@@ -264,9 +263,8 @@ class patch:
                 def complete(self, *args, **kwargs):
                     return super().complete(*args, **kwargs)
 
-                @property
-                def generate(self):
-                    return patch.chat.generate(super().generate)
+                def generate(self, *args, **kwargs):
+                    return super().generate(*args, **kwargs)
 
             return TraceableLLM
 
