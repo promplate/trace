@@ -163,10 +163,11 @@ class patch:
             @wraps(f)
             def wrapper(text: str, /, **config):
                 run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop(LS_PARENT, None))
-                run.post()
+                first = True
                 out = ""
                 for delta in f(text, **config):
-                    if not out:
+                    if first:
+                        first = False
                         run.events = [{"name": "new_token", "time": utcnow()}]
                         run.post()
                     out += delta
@@ -182,10 +183,11 @@ class patch:
             @wraps(f)
             async def wrapper(text: str, /, **config):
                 run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop(LS_PARENT, None))
-                run.post()
+                first = True
                 out = ""
                 async for delta in f(text, **config):
-                    if not out:
+                    if first:
+                        first = False
                         run.events = [{"name": "new_token", "time": utcnow()}]
                         run.post()
                     out += delta
@@ -230,10 +232,11 @@ class patch:
             @wraps(f)
             def wrapper(messages: str, /, **config):
                 run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop(LS_PARENT, None))
-                run.post()
+                first = True
                 out = ""
                 for delta in f(messages, **config):
-                    if not out:
+                    if first:
+                        first = False
                         run.events = [{"name": "new_token", "time": utcnow()}]
                         run.post()
                     out += delta
@@ -249,10 +252,11 @@ class patch:
             @wraps(f)
             async def wrapper(messages: str, /, **config):
                 run = plant_chat_completions(f, ensure(messages), config, parent_run=config.pop(LS_PARENT, None))
-                run.post()
+                first = True
                 out = ""
                 async for delta in f(messages, **config):
-                    if not out:
+                    if first:
+                        first = False
                         run.events = [{"name": "new_token", "time": utcnow()}]
                         run.post()
                     out += delta
