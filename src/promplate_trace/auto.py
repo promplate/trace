@@ -1,3 +1,5 @@
+from traceback import print_exc
+
 from promplate.chain.node import Chain, Node
 from promplate.llm.base import AsyncComplete, AsyncGenerate, Complete, Generate
 
@@ -9,56 +11,80 @@ class patch:
         @staticmethod
         def complete(f: Complete):
             if env.langsmith:
-                from . import langsmith
+                try:
+                    from . import langsmith
 
-                f = langsmith.patch.text.complete(f)
+                    f = langsmith.patch.text.complete(f)
+                except Exception:
+                    print_exc()
 
             if env.langfuse:
-                from . import langfuse
+                try:
+                    from . import langfuse
 
-                f = langfuse.patch.text.complete(f)
+                    f = langfuse.patch.text.complete(f)
+                except Exception:
+                    print_exc()
 
             return f
 
         @staticmethod
         def generate(f: Generate):
             if env.langsmith:
-                from . import langsmith
+                try:
+                    from . import langsmith
 
-                f = langsmith.patch.text.generate(f)
+                    f = langsmith.patch.text.generate(f)
+                except Exception:
+                    print_exc()
 
             if env.langfuse:
-                from . import langfuse
+                try:
+                    from . import langfuse
 
-                f = langfuse.patch.text.generate(f)
+                    f = langfuse.patch.text.generate(f)
+                except Exception:
+                    print_exc()
 
             return f
 
         @staticmethod
         def acomplete(f: AsyncComplete):
             if env.langsmith:
-                from . import langsmith
+                try:
+                    from . import langsmith
 
-                f = langsmith.patch.text.acomplete(f)
+                    f = langsmith.patch.text.acomplete(f)
+                except Exception:
+                    print_exc()
 
             if env.langfuse:
-                from . import langfuse
+                try:
+                    from . import langfuse
 
-                f = langfuse.patch.text.acomplete(f)
+                    f = langfuse.patch.text.acomplete(f)
+                except Exception:
+                    print_exc()
 
             return f
 
         @staticmethod
         def agenerate(f: AsyncGenerate):
             if env.langsmith:
-                from . import langsmith
+                try:
+                    from . import langsmith
 
-                f = langsmith.patch.text.agenerate(f)
+                    f = langsmith.patch.text.agenerate(f)
+                except Exception:
+                    print_exc()
 
             if env.langfuse:
-                from . import langfuse
+                try:
+                    from . import langfuse
 
-                f = langfuse.patch.text.agenerate(f)
+                    f = langfuse.patch.text.agenerate(f)
+                except Exception:
+                    print_exc()
 
             return f
 
@@ -66,82 +92,118 @@ class patch:
         @staticmethod
         def complete(f: Complete):
             if env.langsmith:
-                from . import langsmith
+                try:
+                    from . import langsmith
 
-                f = langsmith.patch.chat.complete(f)
+                    f = langsmith.patch.chat.complete(f)
+                except Exception:
+                    print_exc()
             if env.langfuse:
-                from . import langfuse
+                try:
+                    from . import langfuse
 
-                f = langfuse.patch.chat.complete(f)
+                    f = langfuse.patch.chat.complete(f)
+                except Exception:
+                    print_exc()
 
             return f
 
         @staticmethod
         def generate(f: Generate):
             if env.langsmith:
-                from . import langsmith
+                try:
+                    from . import langsmith
 
-                f = langsmith.patch.chat.generate(f)
+                    f = langsmith.patch.chat.generate(f)
+                except Exception:
+                    print_exc()
 
             if env.langfuse:
-                from . import langfuse
+                try:
+                    from . import langfuse
 
-                f = langfuse.patch.chat.generate(f)
+                    f = langfuse.patch.chat.generate(f)
+                except Exception:
+                    print_exc()
 
             return f
 
         @staticmethod
         def acomplete(f: AsyncComplete):
             if env.langsmith:
-                from . import langsmith
+                try:
+                    from . import langsmith
 
-                f = langsmith.patch.chat.acomplete(f)
+                    f = langsmith.patch.chat.acomplete(f)
+                except Exception:
+                    print_exc()
 
             if env.langfuse:
-                from . import langfuse
+                try:
+                    from . import langfuse
 
-                f = langfuse.patch.chat.acomplete(f)
+                    f = langfuse.patch.chat.acomplete(f)
+                except Exception:
+                    print_exc()
 
             return f
 
         @staticmethod
         def agenerate(f: AsyncGenerate):
             if env.langsmith:
-                from . import langsmith
+                try:
+                    from . import langsmith
 
-                f = langsmith.patch.chat.agenerate(f)
+                    f = langsmith.patch.chat.agenerate(f)
+                except Exception:
+                    print_exc()
 
             if env.langfuse:
-                from . import langfuse
+                try:
+                    from . import langfuse
 
-                f = langfuse.patch.chat.agenerate(f)
+                    f = langfuse.patch.chat.agenerate(f)
+                except Exception:
+                    print_exc()
 
             return f
 
     @staticmethod
     def chain(ChainClass: type[Chain]):
         if env.langsmith:
-            from . import langsmith
+            try:
+                from . import langsmith
 
-            ChainClass = langsmith.patch.chain(ChainClass)
+                ChainClass = langsmith.patch.chain(ChainClass)
+            except Exception:
+                print_exc()
 
         if env.langfuse:
-            from . import langfuse
+            try:
+                from . import langfuse
 
-            ChainClass = langfuse.patch.chain(ChainClass)
+                ChainClass = langfuse.patch.chain(ChainClass)
+            except Exception:
+                print_exc()
 
         return ChainClass
 
     @staticmethod
     def node(NodeClass: type[Node]):
         if env.langsmith:
-            from . import langsmith
+            try:
+                from . import langsmith
 
-            NodeClass = langsmith.patch.node(NodeClass)
+                NodeClass = langsmith.patch.node(NodeClass)
+            except Exception:
+                print_exc()
 
         if env.langfuse:
-            from . import langfuse
+            try:
+                from . import langfuse
 
-            NodeClass = langfuse.patch.node(NodeClass)
+                NodeClass = langfuse.patch.node(NodeClass)
+            except Exception:
+                print_exc()
 
         return NodeClass
