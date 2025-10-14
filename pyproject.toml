@@ -21,7 +21,7 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [dependency-groups]
-dev = ["isort>=5.12.0", "black>=23.11.0", "ipython>=8.18.1"]
+dev = ["isort>=5.12.0", "black>=23.11.0"]
 
 [tool.pdm.scripts]
 fmt = { composite = ["isort ./{args}", "black ./{args}"] }
