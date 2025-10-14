@@ -1,17 +1,15 @@
 from inspect import isasyncgen, isawaitable, isgenerator
-from typing import Callable, TypeVar, cast
+from typing import TypeVar, cast
 
-from langfuse import Langfuse
-from langfuse.client import StatefulClient, StatefulGenerationClient, StatefulSpanClient, StatefulTraceClient, StateType
+from langfuse import Langfuse, LangfuseSpan
 from promplate.chain.node import BaseCallback, Chain, Interruptable, Node
 from promplate.llm.base import LLM, AsyncComplete, AsyncGenerate, Complete, Generate
-from promplate.prompt.chat import Message, ensure
 from promplate.prompt.template import Context
 
 from .env import env
-from .utils import as_is_decorator, cache, clean, diff_context, ensure_serializable, get_versions, name, only_once, split_model_parameters, utcnow, wraps
+from .utils import as_is_decorator, cache, clean, diff_context, ensure_serializable, get_versions, name, only_once, split_model_parameters, wraps
 
-MaybeRun = StatefulClient | str | None
+MaybeRun = LangfuseSpan | None
 
 LF_PARENT = "__lf_parent__"
 
@@ -26,57 +24,23 @@ def find_runs(*contexts: Context) -> list[MaybeRun]:
 
 @cache
 def get_client():
-    return Langfuse(env.langfuse_public_key, env.langfuse_secret_key, env.langfuse_host)
-
-
-def ensure_parent_run(parent: MaybeRun):
-    if isinstance(parent, str):
-        return StatefulTraceClient(get_client().client, parent, StateType.TRACE, parent, get_client().task_manager)
-
-    metadata = get_versions("promplate", "promplate-trace", "langfuse")
-    parent = parent or get_client().trace(metadata=metadata)
-    assert parent is not None
-    return parent
-
-
-def plant_text_completions(function: Callable, text: str, config: Context, parent_run: MaybeRun = None):
-    parent = ensure_parent_run(parent_run)
-    config, extras = split_model_parameters(config)
-    run = parent.generation(
-        name=name(function),
-        input=text,
-        model=str(config.pop("model", None)),
-        start_time=utcnow(),
-        model_parameters=config,
-        metadata=extras,
+    return Langfuse(
+        public_key=env.langfuse_public_key,
+        secret_key=env.langfuse_secret_key,
+        host=env.langfuse_host,
     )
-    assert run is not None
-    return run
-
-
-def plant_chat_completions(function: Callable, messages: str | list[Message], config: Context, parent_run: MaybeRun = None):
-    parent = ensure_parent_run(parent_run)
-    config, extras = split_model_parameters(config)
-    run = parent.generation(
-        name=name(function),
-        input=ensure(messages),
-        model=str(config.pop("model", None)),
-        start_time=utcnow(),
-        model_parameters=config,
-        metadata=extras,
-    )
-    assert run is not None
-    return run
 
 
 class TraceCallback(BaseCallback):
     def on_enter(self, node, context: Context | None, config: Context):
         context_in = self.context_in = {} if context is None else clean(context)
 
+        langfuse = get_client()
         runs = self.runs = find_runs(config, context_in)
-        parent_run = ensure_parent_run(runs[-1])
 
-        run = parent_run.span(name=str(node), input=ensure_serializable(context_in), start_time=utcnow())
+        # Create a span using context manager pattern
+        self.span_ctx = langfuse.start_as_current_span(name=str(node), input=ensure_serializable(context_in))
+        run = self.span_ctx.__enter__()
 
         if context is None:
             context = {}
@@ -89,9 +53,13 @@ class TraceCallback(BaseCallback):
         context_out = clean(context)
 
         runs = find_runs(config, context)
-        run = cast(StatefulSpanClient, runs[-1])
+        run = cast(LangfuseSpan, runs[-1])
 
-        run.end(output=ensure_serializable(diff_context(self.context_in, context_out)), end_time=utcnow())
+        # Update span output
+        run.update(output=ensure_serializable(diff_context(self.context_in, context_out)))
+
+        # Exit the context manager
+        self.span_ctx.__exit__(None, None, None)
 
         context[LF_PARENT] = config[LF_PARENT] = runs[:-1]
 
@@ -103,104 +71,165 @@ T = TypeVar("T", bound=Interruptable)
 
 class patch:
     @staticmethod
-    def _make_complete_wrapper(plant: Callable[..., StatefulGenerationClient], original):
+    def _make_complete_wrapper(original):
         @wraps(original)
         def wrapper(prompt, /, **config):
-            run = plant(original, prompt, config, parent_run=config.pop(LF_PARENT, [None])[-1])
-            out = original(prompt, **config)
+            langfuse = get_client()
+            config.pop(LF_PARENT, None)
 
-            if isawaitable(out):
+            config_params, extras = split_model_parameters(config)
+            model = str(config_params.pop("model", None))
 
-                async def _():
-                    result = await out
-                    run.end(output=result)
-                    return result
+            gen_ctx = langfuse.start_as_current_generation(
+                name=name(original),
+                input=prompt,
+                model=model,
+                model_parameters=config_params,
+                metadata=(extras or {}) | get_versions("promplate", "promplate-trace", "langfuse"),
+            )
 
-                return _()
+            gen = gen_ctx.__enter__()
 
-            run.end(output=out)
-            return out
+            try:
+                out = original(prompt, **config)
+
+                if isawaitable(out):
+
+                    async def _():
+                        try:
+                            result = await out
+                            gen.update(output=result)
+                            return result
+                        finally:
+                            gen_ctx.__exit__(None, None, None)
+
+                    return _()
+
+                gen.update(output=out)
+                gen_ctx.__exit__(None, None, None)
+                return out
+            except Exception as e:
+                gen_ctx.__exit__(type(e), e, e.__traceback__)
+                raise
 
         return wrapper
 
     @staticmethod
-    def _make_generate_wrapper(plant: Callable[..., StatefulGenerationClient], original):
+    def _make_generate_wrapper(original):
         @wraps(original)
         def wrapper(prompt, /, **config):
-            run = plant(original, prompt, config, parent_run=config.pop(LF_PARENT, [None])[-1])
-            gen = original(prompt, **config)
+            langfuse = get_client()
+            config.pop(LF_PARENT, None)
 
-            if isasyncgen(gen):
+            config_params, extras = split_model_parameters(config)
+            model = str(config_params.pop("model", None))
+
+            gen_ctx = langfuse.start_as_current_generation(
+                name=name(original),
+                input=prompt,
+                model=model,
+                model_parameters=config_params,
+                metadata=(extras or {}) | get_versions("promplate", "promplate-trace", "langfuse"),
+            )
+
+            gen = gen_ctx.__enter__()
+            stream = original(prompt, **config)
+
+            if isasyncgen(stream):
 
                 async def _():
                     out = ""
-                    async for delta in gen:
-                        if not out:
-                            run.update(completion_start_time=utcnow())
-                        out += delta
-                        yield delta
-                    run.end(output=out, end_time=utcnow())
+                    try:
+                        async for delta in stream:
+                            out += delta
+                            yield delta
+                        gen.update(output=out)
+                    finally:
+                        gen_ctx.__exit__(None, None, None)
 
                 return _()
 
-            assert isgenerator(gen)
+            assert isgenerator(stream)
 
             def _():
                 out = ""
-                for delta in gen:
-                    if not out:
-                        run.update(completion_start_time=utcnow())
-                    out += delta
-                    yield delta
-                run.end(output=out, end_time=utcnow())
+                try:
+                    for delta in stream:
+                        out += delta
+                        yield delta
+                    gen.update(output=out)
+                finally:
+                    gen_ctx.__exit__(None, None, None)
 
             return _()
 
         return wrapper
 
     @staticmethod
-    def _make_auto_wrapper(plant: Callable[..., StatefulGenerationClient], original):
+    def _make_auto_wrapper(original):
         @wraps(original)
         def wrapper(prompt, /, **config):
-            run = plant(original, prompt, config, config.pop(LF_PARENT, [None])[-1])
+            langfuse = get_client()
+            config.pop(LF_PARENT, None)
+
+            config_params, extras = split_model_parameters(config)
+            model = str(config_params.pop("model", None))
+
+            gen_ctx = langfuse.start_as_current_generation(
+                name=name(original),
+                input=prompt,
+                model=model,
+                model_parameters=config_params,
+                metadata=(extras or {}) | get_versions("promplate", "promplate-trace", "langfuse"),
+            )
+
+            gen = gen_ctx.__enter__()
             res = original(prompt, **config)
 
             if isasyncgen(res):
 
                 async def _():
                     out = ""
-                    async for delta in res:
-                        if not out:
-                            run.update(completion_start_time=utcnow())
-                        out += delta
-                        yield delta
-                    run.end(output=out, end_time=utcnow())
+                    try:
+                        async for delta in res:
+                            out += delta
+                            yield delta
+                        gen.update(output=out)
+                    finally:
+                        gen_ctx.__exit__(None, None, None)
 
                 return _()
 
             if isawaitable(res):
 
                 async def _():
-                    result = await res
-                    run.end(output=result)
-                    return result
+                    try:
+                        result = await res
+                        gen.update(output=result)
+                        return result
+                    finally:
+                        gen_ctx.__exit__(None, None, None)
 
                 return _()
 
             if isinstance(res, str):
-                run.end(output=res, end_time=utcnow())
-                return res
+                try:
+                    gen.update(output=res)
+                    return res
+                finally:
+                    gen_ctx.__exit__(None, None, None)
 
             assert isgenerator(res)
 
             def _():
                 out = ""
-                for delta in res:
-                    if not out:
-                        run.update(completion_start_time=utcnow())
-                    out += delta
-                    yield delta
-                run.end(output=out, end_time=utcnow())
+                try:
+                    for delta in res:
+                        out += delta
+                        yield delta
+                    gen.update(output=out)
+                finally:
+                    gen_ctx.__exit__(None, None, None)
 
             return _()
 
@@ -211,19 +240,19 @@ class patch:
         @only_once
         @as_is_decorator
         def complete(f: Complete | AsyncComplete):
-            return patch._make_complete_wrapper(plant_text_completions, f)
+            return patch._make_complete_wrapper(f)
 
         @staticmethod
         @only_once
         @as_is_decorator
         def generate(f: Generate | AsyncGenerate):
-            return patch._make_generate_wrapper(plant_text_completions, f)
+            return patch._make_generate_wrapper(f)
 
         @staticmethod
         @only_once
         @as_is_decorator
         def auto(f: Complete | AsyncComplete | Generate | AsyncGenerate):
-            return patch._make_auto_wrapper(plant_text_completions, f)
+            return patch._make_auto_wrapper(f)
 
         T = TypeVar("T", bound=Complete | AsyncComplete | Generate | AsyncGenerate)
 
@@ -253,19 +282,19 @@ class patch:
         @only_once
         @as_is_decorator
         def complete(f: Complete | AsyncComplete):
-            return patch._make_complete_wrapper(plant_chat_completions, f)
+            return patch._make_complete_wrapper(f)
 
         @staticmethod
         @only_once
         @as_is_decorator
         def generate(f: Generate | AsyncGenerate):
-            return patch._make_generate_wrapper(plant_chat_completions, f)
+            return patch._make_generate_wrapper(f)
 
         @staticmethod
         @only_once
         @as_is_decorator
         def auto(f: Complete | AsyncComplete | Generate | AsyncGenerate):
-            return patch._make_auto_wrapper(plant_chat_completions, f)
+            return patch._make_auto_wrapper(f)
 
         T = TypeVar("T", bound=Complete | AsyncComplete | Generate | AsyncGenerate)
 
@@ -308,36 +337,36 @@ class patch:
                 return patch.chain(super()._get_chain_type())
 
             def render(self, context: Context | None = None, callbacks=None):
-                parent_run = ensure_parent_run(None if context is None else find_runs(context)[-1])
+                langfuse = get_client()
 
                 prompt = super().render(context, callbacks)
 
-                parent_run.event(
-                    name="render",
-                    input={
-                        "template": self.template.text,
-                        "context": {} if context is None else ensure_serializable(clean(context)),
-                    },
-                    output=prompt,
-                    start_time=utcnow(),
-                )
+                # Create an event to log the render operation
+                with langfuse.start_as_current_span(name="render") as span:
+                    span.update(
+                        input={
+                            "template": self.template.text,
+                            "context": {} if context is None else ensure_serializable(clean(context)),
+                        },
+                        output=prompt,
+                    )
 
                 return prompt
 
             async def arender(self, context: Context | None = None, callbacks=None):
-                parent_run = ensure_parent_run(None if context is None else find_runs(context)[-1])
+                langfuse = get_client()
 
                 prompt = await super().arender(context, callbacks)
 
-                parent_run.event(
-                    name="arender",
-                    input={
-                        "template": self.template.text,
-                        "context": {} if context is None else ensure_serializable(clean(context)),
-                    },
-                    output=prompt,
-                    start_time=utcnow(),
-                )
+                # Create an event to log the arender operation
+                with langfuse.start_as_current_span(name="arender") as span:
+                    span.update(
+                        input={
+                            "template": self.template.text,
+                            "context": {} if context is None else ensure_serializable(clean(context)),
+                        },
+                        output=prompt,
+                    )
 
                 return prompt
 
