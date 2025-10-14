@@ -1,25 +1,29 @@
 name: Formatting and Type Checks
 
-on: ["push", "pull_request"]
+on: ["push", "pull_request", "workflow_dispatch"]
+
+permissions:
+  contents: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python 3.12 and PDM
-        uses: pdm-project/setup-pdm@v3
+      - uses: actions/checkout@v5
+      - name: Set up Python 3.12
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
+          activate-environment: true
       - name: Install dependencies
         run: |
-          pdm install -G:all
+          uv export --all-extras --no-hashes | uv pip install -r - basedpyright --color always
       - name: Run isort check
         run: |
-          pdm run isort . --check --diff
+          isort . --check --diff
       - name: Run black check
         run: |
-          pdm run black . --check --diff
+          black . --check --diff
       - name: Run pyright check
         run: |
-          pdm run npx pyright
+          basedpyright
