@@ -3,7 +3,6 @@ from typing import Callable, Literal, Sequence, TypeVar, cast
 from langsmith import Client, RunTree
 from promplate.chain.node import BaseCallback, Chain, Interruptable, Node
 from promplate.llm.base import AsyncComplete, AsyncGenerate, Complete, Generate
-from promplate.prompt import Context
 from promplate.prompt.chat import Message, assistant, ensure
 from promplate.prompt.template import Context
 
@@ -71,7 +70,16 @@ def plant_text_completions(
 ):
     config = clean(config)
     extra = (extra or {}) | {"invocation_params": config}
-    return plant(name(function), "llm", {"prompt": text, **config}, extra, tags, error, outputs, parent_run)
+    return plant(
+        name(function),
+        "llm",
+        {"prompt": text, **config},
+        extra,
+        tags,
+        error,
+        outputs,
+        parent_run,
+    )
 
 
 def plant_chat_completions(
@@ -86,7 +94,16 @@ def plant_chat_completions(
 ):
     config = clean(config)
     extra = (extra or {}) | {"invocation_params": config}
-    return plant(name(function), "llm", {"messages": messages, **config}, extra, tags, error, outputs, parent_run)
+    return plant(
+        name(function),
+        "llm",
+        {"messages": messages, **config},
+        extra,
+        tags,
+        error,
+        outputs,
+        parent_run,
+    )
 
 
 def text_output(text=""):
@@ -134,7 +151,13 @@ class patch:
         def complete(f: Complete):
             @wraps(f)
             def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop(LS_PARENT, None))
+                run = plant_text_completions(
+                    f,
+                    text,
+                    config,
+                    outputs=text_output(),
+                    parent_run=config.pop(LS_PARENT, None),
+                )
                 run.post()
                 out = f(text, **config)
                 run.end(outputs=text_output(out))
@@ -148,7 +171,13 @@ class patch:
         def acomplete(f: AsyncComplete):
             @wraps(f)
             async def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop(LS_PARENT, None))
+                run = plant_text_completions(
+                    f,
+                    text,
+                    config,
+                    outputs=text_output(),
+                    parent_run=config.pop(LS_PARENT, None),
+                )
                 run.post()
                 out = await f(text, **config)
                 run.end(outputs=text_output(out))
@@ -162,7 +191,13 @@ class patch:
         def generate(f: Generate):
             @wraps(f)
             def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop(LS_PARENT, None))
+                run = plant_text_completions(
+                    f,
+                    text,
+                    config,
+                    outputs=text_output(),
+                    parent_run=config.pop(LS_PARENT, None),
+                )
                 first = True
                 out = ""
                 for delta in f(text, **config):
@@ -182,7 +217,13 @@ class patch:
         def agenerate(f: AsyncGenerate):
             @wraps(f)
             async def wrapper(text: str, /, **config):
-                run = plant_text_completions(f, text, config, outputs=text_output(), parent_run=config.pop(LS_PARENT, None))
+                run = plant_text_completions(
+                    f,
+                    text,
+                    config,
+                    outputs=text_output(),
+                    parent_run=config.pop(LS_PARENT, None),
+                )
                 first = True
                 out = ""
                 async for delta in f(text, **config):
