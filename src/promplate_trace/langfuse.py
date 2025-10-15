@@ -4,6 +4,7 @@ from typing import TypeVar, cast
 from langfuse import Langfuse, LangfuseSpan
 from promplate.chain.node import BaseCallback, Chain, Interruptable, Node
 from promplate.llm.base import LLM, AsyncComplete, AsyncGenerate, Complete, Generate
+from promplate.prompt.chat import ensure
 from promplate.prompt.template import Context
 
 from .env import env
@@ -82,7 +83,7 @@ class patch:
 
             gen_ctx = langfuse.start_as_current_generation(
                 name=name(original),
-                input=prompt,
+                input=ensure(prompt),
                 model=model,
                 model_parameters=config_params,
                 metadata=(extras or {}) | get_versions("promplate", "promplate-trace", "langfuse"),
@@ -126,7 +127,7 @@ class patch:
 
             gen_ctx = langfuse.start_as_current_generation(
                 name=name(original),
-                input=prompt,
+                input=ensure(prompt),
                 model=model,
                 model_parameters=config_params,
                 metadata=(extras or {}) | get_versions("promplate", "promplate-trace", "langfuse"),
@@ -177,7 +178,7 @@ class patch:
 
             gen_ctx = langfuse.start_as_current_generation(
                 name=name(original),
-                input=prompt,
+                input=ensure(prompt),
                 model=model,
                 model_parameters=config_params,
                 metadata=(extras or {}) | get_versions("promplate", "promplate-trace", "langfuse"),
